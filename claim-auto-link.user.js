@@ -1,15 +1,15 @@
 // ==UserScript==
-// @name         ECW Auto-link Claim (Farhan)
+// @name         ECW Auto-link Claim(Farhan)
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.8
 // @description  Auto-link CPTs with ICDs on the ECW CLAIM TAB (icdTable / cptTable)
-// @updateURL    https://raw.githubusercontent.com/FarhanKaB/ECW_Claim_Linking/main/claim-auto-link.user.js
-// @downloadURL  https://raw.githubusercontent.com/FarhanKaB/ECW_Claim_Linking/main/claim-auto-link.user.js
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/*
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/index.jsp*
 // @match https://*.eclinicalweb.com/mobiledoc/jsp/webemr/*
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/*
 // @grant        none
+// @updateURL    https://raw.githubusercontent.com/FarhanKaB/ECW_Claim_Linking/main/Claim_Link.user.js
+// @downloadURL  https://raw.githubusercontent.com/FarhanKaB/ECW_Claim_Linking/main/Claim_Link.user.js
 // ==/UserScript==
 
 (function () {
@@ -268,7 +268,7 @@
     // ─── CPT Rules (full parity with billing-tab script) ────────────────
     function buildCPTRules() {
         const rules = {};
-        const prevICDs = ["Z00.01", "Z00.121", "Z68", "Z71.3", "Z71.82", "Z71.89"];
+        const prevICDs = ["Z00.01", "Z00.121", "Z00.00", "Z00.129", "Z68", "Z71.3", "Z71.82", "Z71.89"];
         const prevCodes = [
             "99391","99392","99393","99394","99395","99396","99397",
             "99381","99382","99383","99384","99385","99386","99387",
@@ -683,6 +683,18 @@
         }
     }
 
+    // ─── Diabetes + Prediabetes conflict check ─────────────────────────
+    // If a diabetes ICD (E08-E13 or O24 gestational diabetes) and
+    // prediabetes (R73.03) are both present on the claim, warn.
+    function checkDiabetesPrediabetesConflict(icdRows) {
+        const codes = icdRows.map(getICDCode).filter(Boolean);
+        const hasDiabetes = codes.some(code => /^E0[89]|^E1[0-3]|^O24/.test(code));
+        const hasPrediabetes = codes.some(code => code === 'R73.03' || code.startsWith('R7303'));
+        if (hasDiabetes && hasPrediabetes) {
+            showNotification(['Diabetes and Prediabetes (R73.03) both present — remove one'], 'red');
+        }
+    }
+
     function alertDuplicateCPT(cptRows) {
         const cptMap = {};
         for (const row of cptRows) {
@@ -720,7 +732,19 @@
 
     // ─── 99214 eligibility check ───────────────────────────────────────
     const EXCLUDED_ICDS = new Set(["E66.9", "E66.01", "E66.09", "E66.3", "F17.210", "F17.200", "F17.220", "E55.9"]);
-    const CHRONIC_PREFIXES = ["E11", "I10", "E78", "E03"];
+    const CHRONIC_CODES = new Set([
+        "B18.8","I10","E03.8","E03.9","E07.89","E07.9","E11.21","E11.22","E11.40","E11.42","E11.49","E11.59",
+        "E11.610","E11.618","E11.65","E11.69","E11.8","E11.9","E44.0","E78.1","E78.2","E78.5",
+        "F01.50","F01.51","F03.90","F03.91","F06.30","F06.31","F06.32","F06.4","F20.1","F20.3","F20.9","F31.10",
+        "F31.61","F31.9","F32.9","F32.A","F33.0","F33.1","F34.9","F39","F41.1","F41.9","F51.01","F51.12","F52.21",
+        "G47.00","G47.09","G89.29","H25.013","H34.8192","I25.10","I25.119","I25.810","I25.812","I25.83","I25.9",
+        "I48.91","I50.22","I51.7","I51.9","I67.9","I73.9","I83.10","I83.891","I83.93",
+        "J32.0","J44.1","J44.9","J45.20","J45.21","J45.30","J45.40","J45.901","J45.909","J45.991",
+        "K21.00","K21.9","K58.0","K58.1","K58.2","K70.31","K74.60","K76.0","K86.0","K86.1","K90.0",
+        "L40.9","L74.9","L83","M06.89","M06.9","M10.00","M10.072","M10.9","M47.22","M47.25","M47.26","M79.7","M81.0",
+        "N18.2","N18.30","N18.31","N18.32","N18.4","N18.9","N40.0","N40.1","N46.9","N52.9",
+        "R00.1","R01.1","R41.81","R54","R87.810","R94.4","R94.5","R94.6","T82.212D"
+    ]);
 
     function extractICDCode(rawText) {
         if (!rawText) return null;
@@ -741,7 +765,7 @@
         console.log('[99214 check] counted codes:', Array.from(codes));
         if (codes.size < 4) return;
 
-        const hasChronic = Array.from(codes).some(code => CHRONIC_PREFIXES.some(prefix => code.startsWith(prefix)));
+        const hasChronic = Array.from(codes).some(code => CHRONIC_CODES.has(code));
         if (hasChronic) showNotification(["99214 can be added"], 'blue');
     }
 
@@ -1010,6 +1034,7 @@
         validatePreventiveCPT(cptRows);
         checkChronicDiseaseCountFor99214(icdRows);
         checkForL21(icdRows);
+        checkDiabetesPrediabetesConflict(icdRows);
         checkForFluVaccineCPTs(cptRows);
         checkMedicarePreventiveCPT(cptRows);
         unselectLSM01(cptRows);
