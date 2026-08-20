@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ECW Auto-link Claim(Farhan)
 // @namespace    http://tampermonkey.net/
-// @version      1.9
+// @version      2.0
 // @description  Auto-link CPTs with ICDs on the ECW CLAIM TAB (icdTable / cptTable)
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/*
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/index.jsp*
@@ -301,6 +301,7 @@
             "4013F": { type: "startsWith", icds: ["E78"], fallback: "officeVisit" },
             "2026F": { type: "startsWith", icds: ["E11"], fallback: "officeVisit" },
             "2033F": { type: "startsWith", icds: ["E11"], fallback: "officeVisit" },
+            "3072F": { type: "startsWith", icds: ["E11"], fallback: "officeVisit" },
             "4010F": { type: "startsWith", icds: ["I10"], fallback: "officeVisit" },
             "CP001": { type: "exact", icds: ["Z09","Z71.89","Z76.89"], fallback: "officeVisit" },
             "3074F": { type: "startsWith", icds: ["I10"], fallback: "officeVisit" },
