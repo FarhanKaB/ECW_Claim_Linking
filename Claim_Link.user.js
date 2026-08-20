@@ -276,7 +276,7 @@
         ];
         prevCodes.forEach(c => { rules[c] = { type: "customICDCollector", icdList: prevICDs }; });
 
-        const ecgICDs = ["E78.5","I10","R00.0","R00.1","R00.2","R03.0","R06.02","R07.9","Z13.6"];
+        const ecgICDs = ["E78","I10","R00.0","R00.1","R00.2","R03.0","R06.02","R07.9","Z13.6"];
         const b12ICDs = ["D51.9","E53.9"];
 
         Object.assign(rules, {
