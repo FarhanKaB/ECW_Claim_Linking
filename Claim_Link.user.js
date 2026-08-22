@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ECW Auto-link Claim(Farhan)
 // @namespace    http://tampermonkey.net/
-// @version      2.1
+// @version      2.2
 // @description  Auto-link CPTs with ICDs on the ECW CLAIM TAB (icdTable / cptTable)
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/*
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/index.jsp*
@@ -265,6 +265,54 @@
         return !!code && EYE_ICD_PATTERNS.some(p => p.test(code));
     }
 
+    // ─── Pain-related ICD detection ─────────────────────────────────────
+    // Explicit whitelist of pain-related codes spanning multiple ICD-10
+    // chapters (R-codes, G-codes, M-codes, K-codes, T-codes), plus a
+    // default-on rule for the M chapter (musculoskeletal) since most of it
+    // is pain-related, carved down by an explicit exclude list.
+    const PAIN_RELATED_ICD_CODES = new Set([
+        "R52", "R52.0", "R52.1", "R52.2", "R52.9", "R51",
+        "G44.1", "G44.209", "G44.401", "G44.501",
+        "R07.0", "R07.1", "R07.2", "R07.9",
+        "M54.2", "M54.5", "M54.4", "M54.8", "M54.9", "M54.59", "M54.50", "M54.12",
+        "M25.5", "M25.51", "M25.52", "M25.53", "M25.54", "M25.55", "M25.56", "M25.57", "M25.58", "M25.59",
+        "M25.511", "M25.512", "M25.519", "M25.521", "M25.522", "M25.529", "M25.531", "M25.532", "M25.539", "M25.541", "M25.542", "M25.549",
+        "M25.551", "M25.552", "M25.559", "M25.561", "M25.562", "M25.569", "M25.571", "M25.572", "M25.579",
+        "M79.6", "M79.1", "M79.2", "M79.7",
+        "G89.0", "G89.2", "G89.3", "G89.4", "G89.21", "G89.22", "G89.29",
+        "G50.1", "G56.0", "G57.0",
+        "R10.0", "R10.2", "R10.30", "R10.4", "M17.0",
+        "N94.4", "N94.5", "N94.6", "M72.2",
+        "R52.81", "R52.82", "R52.89", "M54.16", "M10.9", "M17.12", "M79.10","M85.80","R25.2","M43.16","K59.4",
+        "T14.0", "T79.8XXA",
+        "K52.9",
+        "R11.2"
+    ]);
+    // M-codes are treated as pain-related BY DEFAULT, except this specific
+    // exclude list — structural deformities, stiffness/contracture/
+    // ankylosis, asymptomatic bone-density findings, and instability-not-
+    // pain joint findings. Everything else under M is pain-related unless
+    // listed here.
+    const NON_PAIN_M_EXACT_CODES = new Set([
+        "M67.4", "M72.0", "M79.3",
+        "M81.0", "M81.6", "M81.8",
+        "M22.0", "M22.1", "M24.4", "M24.5", "M24.6", "M25.6", "M62.4", "M62.81", "M89.7"
+    ]);
+    const NON_PAIN_M_PREFIXES = [
+        "M20.", "M21.", "M40.", "M41.", "M43.0", "M43.1", "M85.", "M95.", "M96.", "M88"
+    ];
+
+    function isPainRelatedICD(code) {
+        if (!code) return false;
+        if (PAIN_RELATED_ICD_CODES.has(code)) return true;
+        if (code.startsWith('M')) {
+            if (NON_PAIN_M_EXACT_CODES.has(code)) return false;
+            if (NON_PAIN_M_PREFIXES.some(prefix => code.startsWith(prefix))) return false;
+            return true;
+        }
+        return false;
+    }
+
     // ─── CPT Rules (full parity with billing-tab script) ────────────────
     function buildCPTRules() {
         const rules = {};
@@ -330,7 +378,10 @@
             "1100F": { type: "officeVisit" },
             "3288F": { type: "officeVisit" },
             "1101F": { type: "officeVisit" },
-            "1125F": { type: "startsWith", icds: ["M"], fallback: "officeVisit" },
+            // 1125F is handled by the dedicated pain-related-ICD branch in
+            // linkCPTGeneric (isPainRelatedICD), NOT as a plain startsWith:"M"
+            // rule — see PAIN_RELATED_ICD_CODES / NON_PAIN_M_* above.
+            "1125F": { type: "painLink", fallback: "officeVisit" },
             "1126F": { type: "officeVisit" },
             "1157F": { type: "officeVisit" },
             "1160F": { type: "officeVisit" },
@@ -557,6 +608,23 @@
                         const z68Num = getICDRowNumber(z68Row);
                         if (z68Num) setInputValue(getCPTICDInput(row, slot), z68Num);
                     }
+                    return;
+                }
+
+                if (cpt === "1125F") {
+                    // Link to pain-related ICD rows (in claim ICD-grid order),
+                    // filling up to 4 slots.
+                    const painRows = icdRows.filter(r => isPainRelatedICD(getICDCode(r)));
+                    if (painRows.length) {
+                        painRows.slice(0, 4).forEach((r, idx) => {
+                            const rowNum = getICDRowNumber(r);
+                            if (rowNum) setInputValue(getCPTICDInput(row, idx + 1), rowNum);
+                        });
+                        return;
+                    }
+                    // No pain-related ICD found — fall back to standard
+                    // office-visit linking.
+                    officeVisit([cpt], icdRows, cptRows);
                     return;
                 }
 
