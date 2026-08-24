@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ECW Auto-link Claim(Farhan)
 // @namespace    http://tampermonkey.net/
-// @version      2.2
+// @version      2.3.1
 // @description  Auto-link CPTs with ICDs on the ECW CLAIM TAB (icdTable / cptTable)
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/*
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/index.jsp*
@@ -169,6 +169,10 @@
         return row.querySelector('input[data-fieldname="ClaimCPTTOS"]');
     }
 
+    function getCPTBilledFeeInput(row) {
+        return row.querySelector('input[data-fieldname="ClaimCPTBilledFee"]');
+    }
+
     // "Assign To Patient" checkbox in column 2 — treated as the row's selected state.
     function isCPTRowSelected(row) {
         const chk = row.querySelector('td:nth-child(2) input[type="checkbox"]');
@@ -325,6 +329,7 @@
         prevCodes.forEach(c => { rules[c] = { type: "customICDCollector", icdList: prevICDs }; });
 
         const ecgICDs = ["E78","I10","R00.0","R00.1","R00.2","R03.0","R06.02","R07.9","Z13.6"];
+        const labDrawICDs = ["E08","E09","E10","E11","E13","R73.03","E78","E00","E01","E02","E03","I10"];
         const b12ICDs = ["D51.9","E53.9"];
 
         Object.assign(rules, {
@@ -382,6 +387,12 @@
             // linkCPTGeneric (isPainRelatedICD), NOT as a plain startsWith:"M"
             // rule — see PAIN_RELATED_ICD_CODES / NON_PAIN_M_* above.
             "1125F": { type: "painLink", fallback: "officeVisit" },
+            // 99497 (Advance Care Planning) is handled by a dedicated
+            // chronic-disease-ICD branch in linkCPTGeneric, using the same
+            // CHRONIC_CODES set defined below (near the 99214 check) —
+            // NOT a customICDCollector rule here, since CHRONIC_CODES isn't
+            // declared yet at the point buildCPTRules() runs.
+            "99497": { type: "chronicLink", fallback: "officeVisit" },
             "1126F": { type: "officeVisit" },
             "1157F": { type: "officeVisit" },
             "1160F": { type: "officeVisit" },
@@ -509,7 +520,7 @@
             "99203": { type: "officeVisit" },
             "99204": { type: "officeVisit" },
             "99205": { type: "officeVisit" },
-            "36415": { type: "officeVisitThenZ13" },
+            "36415": { type: "labDrawThenZ13", icdList: labDrawICDs },
             "1111F": { type: "officeVisit" },
             "99051": { type: "officeVisit" },
             "82274": { type: "officeVisit" },
@@ -571,7 +582,27 @@
                     return;
                 }
 
-                if (rule.type === "officeVisitThenZ13") {
+                if (rule.type === "labDrawThenZ13") {
+                    // Try the priority chronic/metabolic ICD list first
+                    // (diabetes, prediabetes, hyperlipidemia, thyroid,
+                    // hypertension), in claim-grid order, up to 4 slots.
+                    const matchedRows = icdRows.filter(r => {
+                        const val = getICDCode(r);
+                        if (!val) return false;
+                        return rule.icdList.some(code =>
+                            code.includes('.') ? val === code.toUpperCase() : val.startsWith(code.toUpperCase())
+                        );
+                    });
+                    if (matchedRows.length) {
+                        matchedRows.slice(0, 4).forEach((r, idx) => {
+                            const rowNum = getICDRowNumber(r);
+                            if (rowNum) setInputValue(getCPTICDInput(row, idx + 1), rowNum);
+                        });
+                        return;
+                    }
+                    // No priority-list match — fall back to the original
+                    // 36415 behavior: office-visit link if any non-Z
+                    // diagnosis exists, else link to Z13.0 (lab screening).
                     const hasNonZ = icdRows.some(r => {
                         const val = getICDCode(r);
                         return val && !val.startsWith('Z');
@@ -623,6 +654,24 @@
                         return;
                     }
                     // No pain-related ICD found — fall back to standard
+                    // office-visit linking.
+                    officeVisit([cpt], icdRows, cptRows);
+                    return;
+                }
+
+                if (cpt === "99497") {
+                    // Link to chronic-disease ICD rows (in claim ICD-grid
+                    // order), filling up to 4 slots. Uses the same
+                    // CHRONIC_CODES set as the 99214 eligibility check.
+                    const chronicRows = icdRows.filter(r => CHRONIC_CODES.has(getICDCode(r)));
+                    if (chronicRows.length) {
+                        chronicRows.slice(0, 4).forEach((r, idx) => {
+                            const rowNum = getICDRowNumber(r);
+                            if (rowNum) setInputValue(getCPTICDInput(row, idx + 1), rowNum);
+                        });
+                        return;
+                    }
+                    // No chronic-disease ICD found — fall back to standard
                     // office-visit linking.
                     officeVisit([cpt], icdRows, cptRows);
                     return;
@@ -878,6 +927,20 @@
         }
     }
 
+    // ─── Malignant neoplasm (C-code) ICD warning ───────────────────────
+    // C00-C96 is the malignant neoplasm (cancer) chapter of ICD-10. If any
+    // ICD on the claim starts with "C", pop a warning so it gets a second
+    // look before submission.
+    function checkForCancerICD(icdRows) {
+        const cCodes = icdRows
+            .map(getICDCode)
+            .filter(code => code && code.startsWith('C'));
+        if (cCodes.length) {
+            const unique = [...new Set(cCodes)];
+            showNotification([`ICD code(s) ${unique.join(", ")} start with "C" (malignant neoplasm) — please verify`], 'red');
+        }
+    }
+
     // ─── Flu vaccine CPT presence check (90686 / 90688) ────────────────
     function checkForFluVaccineCPTs(cptRows) {
         const targetCodes = new Set(["90686", "90688"]);
@@ -1083,6 +1146,34 @@
         });
     }
 
+    // ─── POS default rule ────────────────────────────────────────────
+    // If a CPT row's POS field is still empty after the telehealth POS
+    // rules have run (i.e. it wasn't a televisit), fill it with "11"
+    // (Office) — the standard default place of service.
+    function fillBlankPOS(cptRows) {
+        cptRows.forEach(row => {
+            const posInput = getCPTPOSInput(row);
+            if (posInput && posInput.value.trim() === '') {
+                setInputValue(posInput, '11');
+            }
+        });
+    }
+
+    // ─── Billed Fee zero-fix rule ───────────────────────────────────────
+    // Category II CPT codes (and sometimes others) get billed at "0.00",
+    // which some clearinghouses reject outright. If a row's Billed Fee is
+    // exactly 0, bump it to "0.01" (a nominal charge that's accepted).
+    function fixZeroBilledFee(cptRows) {
+        cptRows.forEach(row => {
+            const feeInput = getCPTBilledFeeInput(row);
+            if (!feeInput) return;
+            const val = feeInput.value.trim();
+            if (val !== '' && parseFloat(val) === 0) {
+                setInputValue(feeInput, '0.01');
+            }
+        });
+    }
+
     // ─── TOS default rule ────────────────────────────────────────────
     // If a CPT row's TOS field is empty/blank, fill it with "1".
     function fillBlankTOS(cptRows) {
@@ -1107,6 +1198,7 @@
         validatePreventiveCPT(cptRows);
         checkChronicDiseaseCountFor99214(icdRows);
         checkForL21(icdRows);
+        checkForCancerICD(icdRows);
         checkDiabetesPrediabetesConflict(icdRows);
         checkForFluVaccineCPTs(cptRows);
         checkMedicarePreventiveCPT(cptRows);
@@ -1119,7 +1211,9 @@
         applyHealthfirstTelehealthPOS(cptRows);
         applyMedicaidTelehealthPOS(cptRows);
         applyOtherInsuranceTelehealthPOS(cptRows);
+        fillBlankPOS(cptRows);
         fillBlankTOS(cptRows);
+        fixZeroBilledFee(cptRows);
     }
 
     // ─── Boot ──────────────────────────────────────────────────────────
