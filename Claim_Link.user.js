@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ECW Auto-link Claim(Farhan)
 // @namespace    http://tampermonkey.net/
-// @version      2.3.1
+// @version      2.3.2
 // @description  Auto-link CPTs with ICDs on the ECW CLAIM TAB (icdTable / cptTable)
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/*
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/index.jsp*
@@ -167,10 +167,6 @@
 
     function getCPTTOSInput(row) {
         return row.querySelector('input[data-fieldname="ClaimCPTTOS"]');
-    }
-
-    function getCPTBilledFeeInput(row) {
-        return row.querySelector('input[data-fieldname="ClaimCPTBilledFee"]');
     }
 
     // "Assign To Patient" checkbox in column 2 — treated as the row's selected state.
@@ -1159,21 +1155,6 @@
         });
     }
 
-    // ─── Billed Fee zero-fix rule ───────────────────────────────────────
-    // Category II CPT codes (and sometimes others) get billed at "0.00",
-    // which some clearinghouses reject outright. If a row's Billed Fee is
-    // exactly 0, bump it to "0.01" (a nominal charge that's accepted).
-    function fixZeroBilledFee(cptRows) {
-        cptRows.forEach(row => {
-            const feeInput = getCPTBilledFeeInput(row);
-            if (!feeInput) return;
-            const val = feeInput.value.trim();
-            if (val !== '' && parseFloat(val) === 0) {
-                setInputValue(feeInput, '0.01');
-            }
-        });
-    }
-
     // ─── TOS default rule ────────────────────────────────────────────
     // If a CPT row's TOS field is empty/blank, fill it with "1".
     function fillBlankTOS(cptRows) {
@@ -1213,7 +1194,6 @@
         applyOtherInsuranceTelehealthPOS(cptRows);
         fillBlankPOS(cptRows);
         fillBlankTOS(cptRows);
-        fixZeroBilledFee(cptRows);
     }
 
     // ─── Boot ──────────────────────────────────────────────────────────
