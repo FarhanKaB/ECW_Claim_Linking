@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ECW Auto-link Claim(Farhan)
 // @namespace    http://tampermonkey.net/
-// @version      2.3.2
+// @version      2.3.4
 // @description  Auto-link CPTs with ICDs on the ECW CLAIM TAB (icdTable / cptTable)
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/*
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/index.jsp*
@@ -348,6 +348,7 @@
             "LSM01": { type: "customICDCollector", icdList: ["Z71.3","Z71.82","Z71.89"], fallback: "officeVisit" },
             "PD001": { type: "customICDCollector", icdList: ["Z71.3","Z71.82","Z71.89"], fallback: "officeVisit" },
             "4013F": { type: "startsWith", icds: ["E78"], fallback: "officeVisit" },
+            "G9664": { type: "startsWith", icds: ["E78"], fallback: "officeVisit" },
             "2026F": { type: "startsWith", icds: ["E11"], fallback: "officeVisit" },
             "2033F": { type: "startsWith", icds: ["E11"], fallback: "officeVisit" },
             "3072F": { type: "startsWith", icds: ["E11"], fallback: "officeVisit" },
@@ -478,6 +479,7 @@
             "86580": { type: "exact", icds: ["Z11.1"], fallback: "officeVisit" },
             "87811": { type: "exact", icds: ["Z11.52"], fallback: "officeVisit" },
             "92228": { type: "startsWith", icds: ["E11"], fallback: "officeVisit" },
+            "92229": { type: "startsWith", icds: ["E11"], fallback: "officeVisit" },
             "92250": { type: "startsWith", icds: ["E11"], fallback: "officeVisit" },
             "82962": { type: "startsWith", icds: ["E11"], fallback: "officeVisit" },
             "94060": { type: "exact", icds: ["R06.2"], fallback: "officeVisit" },
