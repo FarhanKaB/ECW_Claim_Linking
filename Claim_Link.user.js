@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ECW Auto-link Claim(Farhan)
 // @namespace    http://tampermonkey.net/
-// @version      2.3.4
+// @version      2.3.5
 // @description  Auto-link CPTs with ICDs on the ECW CLAIM TAB (icdTable / cptTable)
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/*
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/index.jsp*
@@ -380,18 +380,23 @@
             "1100F": { type: "officeVisit" },
             "3288F": { type: "officeVisit" },
             "1101F": { type: "officeVisit" },
-            // 1125F is handled by the dedicated pain-related-ICD branch in
-            // linkCPTGeneric (isPainRelatedICD), NOT as a plain startsWith:"M"
-            // rule — see PAIN_RELATED_ICD_CODES / NON_PAIN_M_* above.
+            // 1125F and 0521F are both handled by the dedicated
+            // pain-related-ICD branch in linkCPTGeneric (isPainRelatedICD),
+            // NOT as a plain startsWith:"M" rule — see
+            // PAIN_RELATED_ICD_CODES / NON_PAIN_M_* above.
             "1125F": { type: "painLink", fallback: "officeVisit" },
+            "0521F": { type: "painLink", fallback: "officeVisit" },
             // 99497 (Advance Care Planning) is handled by a dedicated
             // chronic-disease-ICD branch in linkCPTGeneric, using the same
             // CHRONIC_CODES set defined below (near the 99214 check) —
             // NOT a customICDCollector rule here, since CHRONIC_CODES isn't
             // declared yet at the point buildCPTRules() runs.
+            // 1157F is also handled by the dedicated chronic-disease-ICD
+            // branch in linkCPTGeneric (same CHRONIC_CODES set as 99497 /
+            // the 99214 check), NOT as a plain officeVisit rule.
             "99497": { type: "chronicLink", fallback: "officeVisit" },
+            "1157F": { type: "chronicLink", fallback: "officeVisit" },
             "1126F": { type: "officeVisit" },
-            "1157F": { type: "officeVisit" },
             "1160F": { type: "officeVisit" },
             "1170F": { type: "officeVisit" },
             "3048F": { type: "startsWith", icds: ["E78","Z71.2"], fallback: "officeVisit" },
@@ -640,7 +645,7 @@
                     return;
                 }
 
-                if (cpt === "1125F") {
+                if (cpt === "1125F" || cpt === "0521F") {
                     // Link to pain-related ICD rows (in claim ICD-grid order),
                     // filling up to 4 slots.
                     const painRows = icdRows.filter(r => isPainRelatedICD(getICDCode(r)));
@@ -657,7 +662,7 @@
                     return;
                 }
 
-                if (cpt === "99497") {
+                if (cpt === "99497" || cpt === "1157F") {
                     // Link to chronic-disease ICD rows (in claim ICD-grid
                     // order), filling up to 4 slots. Uses the same
                     // CHRONIC_CODES set as the 99214 eligibility check.
