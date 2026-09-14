@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ECW Auto-link Claim(Farhan)
 // @namespace    http://tampermonkey.net/
-// @version      2.3.6
+// @version      2.3.7
 // @description  Auto-link CPTs with ICDs on the ECW CLAIM TAB (icdTable / cptTable)
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/*
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/index.jsp*
@@ -239,6 +239,14 @@
         "99383": { min: 5, max: 11 }, "99384": { min: 12, max: 17 }, "99385": { min: 18, max: 39 },
         "99386": { min: 40, max: 64 }, "99387": { min: 65, max: 999 }
     };
+
+    // ─── CPTs excluded from auto-linking ───────────────────────────────
+    // These codes are never auto-linked by the script. Whatever ICD
+    // pointers are already typed into slots 1-4 on their rows stay exactly
+    // as the user entered them. (99495 / 99496 are Transitional Care
+    // Management codes — the correct diagnosis depends on the discharge,
+    // so it's left to the biller.)
+    const NO_AUTOLINK_CPT_CODES = new Set(["99495", "99496"]);
 
     // ─── Eye-related ICD detection ──────────────────────────────────────
     // Covers all non-Z eye/adnexa codes across chapters, not just H00-H59:
@@ -551,6 +559,9 @@
         if (!topICDs.length) return;
 
         cptCodes.forEach(code => {
+            // Safety net: never touch a no-autolink CPT, no matter which
+            // rule's fallback called us.
+            if (NO_AUTOLINK_CPT_CODES.has(String(code).toUpperCase())) return;
             const matches = cptRows.filter(row => getCPTCode(row) === code);
             matches.forEach(row => {
                 for (let i = 1; i <= 4; i++) setInputValue(getCPTICDInput(row, i), '');
@@ -576,6 +587,10 @@
         const allICDs = icdRows.map(getICDCode).filter(Boolean);
 
         for (const [cpt, rule] of Object.entries(cptRules)) {
+            // Skip any CPT flagged as no-autolink — leave its ICD slots
+            // exactly as entered.
+            if (NO_AUTOLINK_CPT_CODES.has(cpt.toUpperCase())) continue;
+
             const matches = cptRows.filter(row => getCPTCode(row) === cpt);
             matches.forEach(row => {
                 for (let i = 1; i <= 4; i++) setInputValue(getCPTICDInput(row, i), '');
@@ -763,7 +778,10 @@
         const icdRows = getICDRows();
         cptRows.forEach(row => {
             const cptCode = getCPTCode(row);
-            if (cptCode && !cptRules[cptCode]) {
+            if (!cptCode) return;
+            // Leave no-autolink CPTs (99495 / 99496) exactly as entered.
+            if (NO_AUTOLINK_CPT_CODES.has(cptCode.toUpperCase())) return;
+            if (!cptRules[cptCode]) {
                 officeVisit([cptCode], icdRows, cptRows);
             }
         });
