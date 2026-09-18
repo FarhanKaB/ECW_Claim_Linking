@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ECW Auto-link Claim(Farhan)
 // @namespace    http://tampermonkey.net/
-// @version      2.3.7
+// @version      2.3.8
 // @description  Auto-link CPTs with ICDs on the ECW CLAIM TAB (icdTable / cptTable)
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/*
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/index.jsp*
@@ -962,6 +962,20 @@
         }
     }
 
+    // ─── Z13.6 ICD warning ─────────────────────────────────────────────
+    // Z13.6 (encounter for screening for cardiovascular disorders) needs a
+    // second look before submission — pop a red warning whenever it's on
+    // the claim.
+    function checkForZ136(icdRows) {
+        const found = icdRows
+            .map(getICDCode)
+            .filter(code => code && code.startsWith('Z13.6'));
+        if (found.length) {
+            const unique = [...new Set(found)];
+            showNotification([`ICD ${unique.join(", ")} present on this claim — please verify`], 'red');
+        }
+    }
+
     // ─── Flu vaccine CPT presence check (90686 / 90688) ────────────────
     function checkForFluVaccineCPTs(cptRows) {
         const targetCodes = new Set(["90686", "90688"]);
@@ -1205,6 +1219,7 @@
         checkChronicDiseaseCountFor99214(icdRows);
         checkForL21(icdRows);
         checkForCancerICD(icdRows);
+        checkForZ136(icdRows);
         checkDiabetesPrediabetesConflict(icdRows);
         checkForFluVaccineCPTs(cptRows);
         checkMedicarePreventiveCPT(cptRows);
