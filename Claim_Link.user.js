@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ECW Auto-link Claim(Farhan)
 // @namespace    http://tampermonkey.net/
-// @version      2.3.8
+// @version      2.4.0
 // @description  Auto-link CPTs with ICDs on the ECW CLAIM TAB (icdTable / cptTable)
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/*
 // @match https://*.ecwcloud.com/mobiledoc/jsp/webemr/index.jsp*
@@ -976,6 +976,21 @@
         }
     }
 
+    // ─── 99214 + counseling CPT conflict check (99401 / 99406) ─────────
+    // 99214 billed alongside a preventive-counseling code (99401) or a
+    // smoking-cessation counseling code (99406) needs a second look before
+    // submission — pop a red warning.
+    const COUNSELING_CONFLICT_CPTS = new Set(["99401", "99406"]);
+    function check99214CounselingConflict(cptRows) {
+        const codes = cptRows.map(row => getCPTCode(row).toUpperCase()).filter(Boolean);
+        if (!codes.includes('99214')) return;
+
+        const conflicts = [...new Set(codes.filter(code => COUNSELING_CONFLICT_CPTS.has(code)))];
+        if (conflicts.length) {
+            showNotification([`99214 billed with ${conflicts.join(", ")} — please verify`], 'red');
+        }
+    }
+
     // ─── Flu vaccine CPT presence check (90686 / 90688) ────────────────
     function checkForFluVaccineCPTs(cptRows) {
         const targetCodes = new Set(["90686", "90688"]);
@@ -1181,6 +1196,28 @@
         });
     }
 
+    // ─── G0447 + office-visit modifier rule ─────────────────────────────
+    // If G0447 (obesity counseling) is on the claim together with 99213 or
+    // 99214, clear MOD1 on the office-visit row(s) and put "59" on the
+    // G0447 row.
+    const G0447_PAIRED_OFFICE_VISITS = new Set(["99213", "99214"]);
+    function applyG0447ModifierRule(cptRows) {
+        const codes = cptRows.map(row => getCPTCode(row).toUpperCase()).filter(Boolean);
+        if (!codes.includes('G0447')) return;
+        if (!codes.some(code => G0447_PAIRED_OFFICE_VISITS.has(code))) return;
+
+        cptRows.forEach(row => {
+            const code = getCPTCode(row).toUpperCase();
+            const modInput = getCPTMod1Input(row);
+            if (!modInput) return;
+            if (G0447_PAIRED_OFFICE_VISITS.has(code)) {
+                if (modInput.value.trim() !== '') setInputValue(modInput, '');
+            } else if (code === 'G0447') {
+                setInputValue(modInput, '59');
+            }
+        });
+    }
+
     // ─── POS default rule ────────────────────────────────────────────
     // If a CPT row's POS field is still empty after the telehealth POS
     // rules have run (i.e. it wasn't a televisit), fill it with "11"
@@ -1221,6 +1258,7 @@
         checkForCancerICD(icdRows);
         checkForZ136(icdRows);
         checkDiabetesPrediabetesConflict(icdRows);
+        check99214CounselingConflict(cptRows);
         checkForFluVaccineCPTs(cptRows);
         checkMedicarePreventiveCPT(cptRows);
         unselectLSM01(cptRows);
@@ -1229,6 +1267,7 @@
         setMod59For96372(cptRows);
         setMod25For99211(cptRows);
         removeModForWellnessCodes(cptRows);
+        applyG0447ModifierRule(cptRows);
         applyHealthfirstTelehealthPOS(cptRows);
         applyMedicaidTelehealthPOS(cptRows);
         applyOtherInsuranceTelehealthPOS(cptRows);
