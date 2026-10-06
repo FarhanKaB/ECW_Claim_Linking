@@ -463,6 +463,7 @@
             "90680": { type: "exact", icds: ["Z23"], fallback: "officeVisit" },
             "90681": { type: "exact", icds: ["Z23"], fallback: "officeVisit" },
             "90714": { type: "exact", icds: ["Z23"], fallback: "officeVisit" },
+            "90694": { type: "exact", icds: ["Z23"], fallback: "officeVisit" },
             "90622": { type: "exact", icds: ["Z23"], fallback: "officeVisit" },
             "90611": { type: "exact", icds: ["Z23"], fallback: "officeVisit" },
             "90716": { type: "exact", icds: ["Z23"], fallback: "officeVisit" },
